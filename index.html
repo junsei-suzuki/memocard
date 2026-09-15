@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1e293b">
+<title>カードマップ</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273549; --text:#e2e8f0; --sub:#94a3b8;
+    --accent:#38bdf8; --line:#334155;
+    --imp0:#475569; --imp1:#38bdf8; --imp2:#eab308; --imp3:#ef4444;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;}
+  body{display:flex; flex-direction:column; overflow:hidden;}
+  button{font:inherit; color:inherit;}
+  input,textarea{font:inherit; color:inherit; background:var(--panel2); border:1px solid var(--line);
+    border-radius:8px; padding:.6em .7em;}
+
+  #app{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:70px;}
+  .screen{display:none; padding:16px; padding-top:calc(16px + env(safe-area-inset-top));}
+  .screen.active{display:block;}
+
+  .topbar{display:flex; align-items:center; gap:8px; margin-bottom:14px;}
+  .topbar h1{font-size:1.15em; margin:0; flex:1;}
+  .iconbtn{background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:1.1em;}
+
+  .search-bar{display:flex; gap:8px; margin-bottom:14px;}
+  .search-bar input{flex:1;}
+
+  .today-card{background:linear-gradient(135deg,#1d4e6b,#153b52); border:1px solid #1e5a78;
+    border-radius:14px; padding:16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between;}
+  .today-card .num{font-size:1.8em; font-weight:700; color:var(--accent);}
+  .today-card button{background:var(--accent); color:#032; border:none; border-radius:10px; padding:.6em 1em; font-weight:600;}
+
+  .folder-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;}
+  .folder-tile{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px;
+    text-align:left; position:relative;}
+  .folder-tile .dot{width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px;}
+  .folder-tile .name{font-weight:600; display:block; margin-top:4px;}
+  .folder-tile .count{color:var(--sub); font-size:.85em;}
+  .add-folder-tile{border:1px dashed var(--line); background:transparent; color:var(--sub);
+    display:flex; align-items:center; justify-content:center; min-height:74px;}
+
+  .card-list{display:flex; flex-direction:column; gap:8px;}
+  .card-row{background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--imp0);
+    border-radius:10px; padding:12px; display:flex; align-items:center; gap:10px;}
+  .card-row .front{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .card-row .due-badge{font-size:.75em; color:var(--sub);}
+  .card-row.imp1{border-left-color:var(--imp1);}
+  .card-row.imp2{border-left-color:var(--imp2);}
+  .card-row.imp3{border-left-color:var(--imp3);}
+
+  .fab{position:fixed; right:18px; bottom:86px; width:54px; height:54px; border-radius:50%;
+    background:var(--accent); color:#032; border:none; font-size:1.6em; display:flex;
+    align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,.4); z-index:5;}
+
+  nav.tabbar{position:fixed; left:0; right:0; bottom:0; display:flex; background:var(--panel);
+    border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); z-index:4;}
+  nav.tabbar button{flex:1; background:none; border:none; padding:10px 0 8px; color:var(--sub);
+    display:flex; flex-direction:column; align-items:center; gap:2px; font-size:.7em;}
+  nav.tabbar button .ico{font-size:1.3em;}
+  nav.tabbar button.active{color:var(--accent);}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:.8em; color:var(--sub); margin-bottom:4px;}
+  .field input,.field textarea{width:100%; resize:vertical;}
+  .imp-picker{display:flex; gap:8px;}
+  .imp-picker button{flex:1; border-radius:8px; border:2px solid var(--line); background:var(--panel2);
+    padding:.6em 0; opacity:.6;}
+  .imp-picker button.sel{opacity:1; border-color:var(--accent);}
+  .imp-picker button[data-i="1"]{color:var(--imp1);}
+  .imp-picker button[data-i="2"]{color:var(--imp2);}
+  .imp-picker button[data-i="3"]{color:var(--imp3);}
+
+  .img-row{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;}
+  .img-thumb{position:relative; width:64px; height:64px; border-radius:8px; overflow:hidden;
+    border:1px solid var(--line);}
+  .img-thumb img{width:100%; height:100%; object-fit:cover;}
+  .img-thumb .rm{position:absolute; top:0; right:0; background:rgba(0,0,0,.6); color:#fff;
+    border:none; width:20px; height:20px; font-size:.8em;}
+  .img-add{width:64px; height:64px; border-radius:8px; border:1px dashed var(--line); background:none;
+    color:var(--sub); font-size:1.4em;}
+
+  .chip{display:inline-flex; align-items:center; gap:4px; background:var(--panel2);
+    border:1px solid var(--line); border-radius:999px; padding:.3em .8em; font-size:.85em; margin:3px 4px 0 0;}
+  .chip button{background:none; border:none; color:var(--sub); font-size:1em; line-height:1;}
+
+  .flashcard{background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    min-height:220px; padding:24px; display:flex; align-items:center; justify-content:center;
+    text-align:center; font-size:1.2em; line-height:1.5; margin-bottom:14px;}
+  .flashcard img{max-width:100%; border-radius:8px; margin-top:10px;}
+  .hint{text-align:center; color:var(--sub); font-size:.85em; margin-bottom:14px;}
+
+  .grade-row{display:flex; gap:8px;}
+  .grade-row button{flex:1; border-radius:10px; border:none; padding:.9em 0; font-weight:600;}
+  .g-again{background:#7f1d1d; color:#fecaca;}
+  .g-hard{background:#78350f; color:#fed7aa;}
+  .g-good{background:#14532d; color:#bbf7d0;}
+  .g-easy{background:#164e63; color:#a5f3fc;}
+
+  .empty{color:var(--sub); text-align:center; padding:40px 20px;}
+
+  #mapCanvas{touch-action:none; display:block; width:100%; height:100%; background:var(--bg);}
+  #mapScreen.screen{padding:0;}
+  #mapScreen .maptop{position:absolute; top:0; left:0; right:0; padding:10px 12px;
+    padding-top:calc(10px + env(safe-area-inset-top)); display:flex; gap:8px; z-index:3;
+    background:linear-gradient(#0f172ad0, transparent);}
+  #mapWrap{position:relative; height:100%;}
+  .maphint{position:absolute; bottom:80px; left:0; right:0; text-align:center; color:var(--sub);
+    font-size:.75em; pointer-events:none;}
+
+  .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:20;
+    display:flex; align-items:flex-end;}
+  .modal{background:var(--panel); border-radius:16px 16px 0 0; padding:18px; width:100%;
+    max-height:80vh; overflow-y:auto; padding-bottom:calc(18px + env(safe-area-inset-bottom));}
+  .modal h3{margin-top:0;}
+  .modal .row{display:flex; gap:8px; margin-top:12px;}
+  .modal .row button{flex:1; padding:.7em 0; border-radius:8px; border:1px solid var(--line); background:var(--panel2);}
+  .modal .row button.primary{background:var(--accent); color:#032; border:none; font-weight:600;}
+  .search-result{padding:10px; border-bottom:1px solid var(--line);}
+  .search-result small{color:var(--sub); display:block;}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ホーム -->
+  <section id="homeScreen" class="screen active">
+    <div class="topbar"><h1>カードマップ</h1>
+      <button class="iconbtn" id="btnSettings">⚙️</button>
+    </div>
+    <div class="search-bar">
+      <input type="search" id="homeSearch" placeholder="全フォルダから検索…">
+    </div>
+    <div class="today-card">
+      <div><div class="num" id="dueCount">0</div><div style="color:var(--sub); font-size:.85em;">今日の復習</div></div>
+      <button id="btnStartReview">はじめる</button>
+    </div>
+    <div class="folder-grid" id="folderGrid"></div>
+  </section>
+
+  <!-- フォルダ内カード一覧 -->
+  <section id="folderScreen" class="screen">
+    <div class="topbar">
+      <button class="iconbtn" id="btnFolderBack">←</button>
+      <h1 id="folderTitle">フォルダ</h1>
+      <button class="iconbtn" id="btnFolderMenu">⋯</button>
+    </div>
+    <div class="search-bar"><input type="search" id="folderSearch" placeholder="このフォルダ内を検索…"></div>
+    <div class="card-list" id="cardList"></div>
+    <div class="empty" id="folderEmpty" style="display:none;">まだカードがありません。右下の＋から追加しましょう。</div>
+  </section>
+
+  <!-- カード詳細 -->
+  <section id="cardScreen" class="screen">
+    <div class="topbar">
+      <button class="iconbtn" id="btnCardBack">←</button>
+      <h1>カード</h1>
+      <button class="iconbtn" id="btnCardEdit">✎</button>
+    </div>
+    <div class="flashcard" id="cardFace"></div>
+    <div class="hint">タップで表裏を切りかえ</div>
+    <div id="cardLinks"></div>
+  </section>
+
+  <!-- カード編集 -->
+  <section id="editScreen" class="screen">
+    <div class="topbar">
+      <button class="iconbtn" id="btnEditCancel">←</button>
+      <h1 id="editTitle">カードを追加</h1>
+      <button class="iconbtn" id="btnEditSave">✓</button>
+    </div>
+    <div class="field">
+      <label>フォルダ</label>
+      <select id="editFolder" style="width:100%; padding:.6em; border-radius:8px; background:var(--panel2); border:1px solid var(--line);"></select>
+    </div>
+    <div class="field">
+      <label>表（問い）</label>
+      <textarea id="editFront" rows="3"></textarea>
+      <div class="img-row" id="frontImgs"></div>
+    </div>
+    <div class="field">
+      <label>裏（答え）</label>
+      <textarea id="editBack" rows="3"></textarea>
+      <div class="img-row" id="backImgs"></div>
+    </div>
+    <div class="field">
+      <label>重要度</label>
+      <div class="imp-picker">
+        <button data-i="0" class="sel">なし</button>
+        <button data-i="1">覚えた</button>
+        <button data-i="2">あやしい</button>
+        <button data-i="3">苦手</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>類題（フォルダをまたいで設定できます）</label>
+      <input type="search" id="linkSearch" placeholder="カードを検索して追加…">
+      <div id="linkChips"></div>
+    </div>
+    <input type="file" id="imgFileFront" accept="image/*" style="display:none;">
+    <input type="file" id="imgFileBack" accept="image/*" style="display:none;">
+  </section>
+
+  <!-- 復習 -->
+  <section id="reviewScreen" class="screen">
+    <div class="topbar">
+      <button class="iconbtn" id="btnReviewClose">✕</button>
+      <h1 id="reviewProgress">復習</h1>
+      <label style="font-size:.75em; color:var(--sub); display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="focusLinked"> 類題を重点的に
+      </label>
+    </div>
+    <div class="flashcard" id="reviewFace"></div>
+    <div class="hint" id="reviewHint">タップで裏を見る</div>
+    <div class="grade-row" id="gradeRow" style="display:none;">
+      <button class="g-again" data-g="again">もう一度</button>
+      <button class="g-hard" data-g="hard">むずかしい</button>
+      <button class="g-good" data-g="good">ふつう</button>
+      <button class="g-easy" data-g="easy">かんたん</button>
+    </div>
+  </section>
+
+  <!-- 検索 -->
+  <section id="searchScreen" class="screen">
+    <div class="topbar"><h1>検索</h1></div>
+    <div class="search-bar"><input type="search" id="globalSearch" placeholder="表・裏・タグから検索…" autofocus></div>
+    <div id="searchResults"></div>
+  </section>
+
+  <!-- マップ -->
+  <section id="mapScreen" class="screen">
+    <div id="mapWrap">
+      <canvas id="mapCanvas"></canvas>
+      <div class="maptop">
+        <button class="iconbtn" id="btnMapBack">←</button>
+        <select id="mapScope" style="flex:1; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--text); padding:0 8px;"></select>
+        <button class="iconbtn" id="btnMapReflow">⟲</button>
+      </div>
+      <div class="maphint">1本指=移動／長押しで線を引く／空所を長押しで枠を作成</div>
+    </div>
+  </section>
+
+  <!-- 設定 -->
+  <section id="settingsScreen" class="screen">
+    <div class="topbar">
+      <button class="iconbtn" id="btnSettingsBack">←</button>
+      <h1>設定</h1>
+    </div>
+    <div class="field"><button id="btnExport" style="width:100%; padding:.8em; border-radius:10px; border:1px solid var(--line); background:var(--panel);">書き出し（バックアップ）</button></div>
+    <div class="field">
+      <label>読み込み</label>
+      <input type="file" id="importFile" accept="application/json">
+    </div>
+    <div class="field"><button id="btnNotifPermission" style="width:100%; padding:.8em; border-radius:10px; border:1px solid var(--line); background:var(--panel);">通知を許可する</button></div>
+  </section>
+
+</div>
+
+<button class="fab" id="fabAdd">＋</button>
+
+<nav class="tabbar">
+  <button class="tab-btn active" data-screen="homeScreen"><span class="ico">🏠</span>ホーム</button>
+  <button class="tab-btn" data-screen="searchScreen"><span class="ico">🔍</span>検索</button>
+  <button class="tab-btn" data-screen="reviewScreen" id="tabReview"><span class="ico">📚</span>復習</button>
+  <button class="tab-btn" data-screen="mapScreen"><span class="ico">🗺️</span>マップ</button>
+</nav>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
