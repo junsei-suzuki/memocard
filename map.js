@@ -55,12 +55,23 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
 
   async function setScope(newScope) {
     scope = newScope;
-    mapId = 'map:' + scope;
+    mapId = scope === 'custom' ? 'map:custom' : 'map:' + scope;
     const state = getState();
-    cards = scope === 'all' ? state.cards.slice() : state.cards.filter(c => c.folderId === scope);
 
     const loaded = await getMap(mapId);
-    map = loaded || { id: mapId, name: '', scope: { type: scope === 'all' ? 'all' : 'folder', folderId: scope }, nodes: {}, groups: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
+    map = loaded || {
+      id: mapId, name: '',
+      scope: scope === 'all' ? { type: 'all' } : scope === 'custom' ? { type: 'custom', cardIds: [] } : { type: 'folder', folderId: scope },
+      nodes: {}, groups: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 },
+    };
+
+    // カードマップ（custom）は、自分で「複製」して集めたカードだけを表示する
+    if (scope === 'custom') {
+      const ids = new Set(map.scope.cardIds || []);
+      cards = state.cards.filter(c => ids.has(c.id));
+    } else {
+      cards = scope === 'all' ? state.cards.slice() : state.cards.filter(c => c.folderId === scope);
+    }
 
     // 新規カードには座標がないので、まだ配置されていない分だけ散らす
     const missing = cards.filter(c => !map.nodes[c.id]);
