@@ -3,8 +3,22 @@
 
 const NODE_W = 130, NODE_H = 70;
 const LONG_PRESS_MS = 420;
+const DOUBLE_TAP_MS = 350;
+const MOVE_THRESHOLD = 8; // これ未満の移動は「動いていない」とみなす（タップ/長押しの判定用）
 
-export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
+// 白基調のテーマに合わせた配色（index.html の CSS 変数と揃えている）
+const PALETTE = {
+  bg: '#f8fafc',
+  nodeFill: '#ffffff',
+  nodeBack: '#eef2ff',
+  text: '#0f172a',
+  sub: '#64748b',
+  link: '#94a3b899',
+  accent: '#0284c7',
+  imp: { 0: '#94a3b8', 1: '#0284c7', 2: '#ca8a04', 3: '#dc2626' },
+};
+
+export function initMap({ canvas, getState, onOpenCard, onDeleteCard, saveMap, getMap }) {
   const ctx = canvas.getContext('2d');
   let dpr = window.devicePixelRatio || 1;
 
@@ -27,8 +41,12 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
   let connectPoint = null;
   let longPressTimer = null;
   let lastPan = null;
+  let startPoint = null;    // 押し始めた位置。しきい値未満の移動は「動いていない」扱いにする
   let pinchStart = null;
   let selectedEdge = null;
+  let flippedIds = new Set(); // タップして裏を表示中のカード
+  let lastTapId = null;
+  let lastTapTime = 0;
 
   function resize() {
     dpr = window.devicePixelRatio || 1;
@@ -55,23 +73,14 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
 
   async function setScope(newScope) {
     scope = newScope;
-    mapId = scope === 'custom' ? 'map:custom' : 'map:' + scope;
+    mapId = 'map:' + scope;
     const state = getState();
+    cards = scope === 'all' ? state.cards.slice() : state.cards.filter(c => c.folderId === scope);
 
     const loaded = await getMap(mapId);
-    map = loaded || {
-      id: mapId, name: '',
-      scope: scope === 'all' ? { type: 'all' } : scope === 'custom' ? { type: 'custom', cardIds: [] } : { type: 'folder', folderId: scope },
-      nodes: {}, groups: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 },
-    };
+    map = loaded || { id: mapId, name: '', scope: { type: scope === 'all' ? 'all' : 'folder', folderId: scope }, nodes: {}, groups: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
 
-    // カードマップ（custom）は、自分で「複製」して集めたカードだけを表示する
-    if (scope === 'custom') {
-      const ids = new Set(map.scope.cardIds || []);
-      cards = state.cards.filter(c => ids.has(c.id));
-    } else {
-      cards = scope === 'all' ? state.cards.slice() : state.cards.filter(c => c.folderId === scope);
-    }
+    flippedIds.clear();
 
     // 新規カードには座標がないので、まだ配置されていない分だけ散らす
     const missing = cards.filter(c => !map.nodes[c.id]);
@@ -174,6 +183,7 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
       dragNodeId = card.id;
       dragOffset = { x: w.x - map.nodes[card.id].x, y: w.y - map.nodes[card.id].y };
       touchMode = 'pending'; // タップかドラッグか長押しか、動きを見て確定する
+      startPoint = p;
       longPressTimer = setTimeout(() => {
         touchMode = 'connect';
         connectFrom = card.id;
@@ -247,22 +257,34 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
 
   function onUp(e) {
     clearTimeout(longPressTimer);
-    const p = lastPan;
     if (touchMode === 'pending' && dragNodeId) {
-      // 動かずに離した = タップ扱い。カードを開く
-      const card = cards.find(c => c.id === dragNodeId);
-      if (card) onOpenCard(card.id);
+      // 動かずに離した = タップ。1回だけなら裏表を切りかえ、素早く2回タップしたら詳細を開く
+      const cardId = dragNodeId;
+      const now = Date.now();
+      if (lastTapId === cardId && now - lastTapTime < DOUBLE_TAP_MS) {
+        lastTapId = null; lastTapTime = 0;
+        onOpenCard(cardId);
+      } else {
+        lastTapId = cardId; lastTapTime = now;
+        if (flippedIds.has(cardId)) flippedIds.delete(cardId); else flippedIds.add(cardId);
+        dirty = true;
+      }
     } else if (touchMode === 'connect' && connectFrom) {
       const w = connectPoint;
       const target = nodeAt(w.x, w.y);
       if (target && target.id !== connectFrom) {
         map.edges.push({ id: 'e' + Date.now(), aId: connectFrom, bId: target.id, kind: 'line', label: '' });
+        persist();
+      } else {
+        // 相手を選ばずに長押しだけで離した場合は、カードの操作メニューを出す
+        showNodeMenu(connectFrom);
       }
       connectFrom = null; connectPoint = null;
     } else if (touchMode === 'drag' || touchMode === 'group-drag') {
       persist();
     }
     touchMode = null; dragNodeId = null; dragGroupId = null;
+    startPoint = null;
     pinchStart = null;
     dirty = true;
   }
@@ -285,7 +307,23 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
   function createGroupAt(w) {
     const title = prompt('グループのタイトル', 'グループ');
     if (title === null) return;
-    map.groups.push({ id: 'g' + Date.now(), title, color: '#38bdf8', x: w.x - 90, y: w.y - 60, w: 180, h: 120 });
+    map.groups.push({ id: 'g' + Date.now(), title, color: PALETTE.accent, x: w.x - 90, y: w.y - 60, w: 180, h: 120 });
+    dirty = true;
+    persist();
+  }
+
+  function showNodeMenu(cardId) {
+    const choice = prompt('削除する場合は d を入力してください（キャンセルは空欄のままOK）');
+    if (choice === 'd') onDeleteCard(cardId);
+  }
+
+  /** カードがフォルダ画面などから削除されたとき、マップ側の参照も掃除する */
+  function removeCard(cardId) {
+    cards = cards.filter(c => c.id !== cardId);
+    delete map.nodes[cardId];
+    map.edges = map.edges.filter(e => e.aId !== cardId && e.bId !== cardId);
+    linkPairs = linkPairs.filter(l => l.aId !== cardId && l.bId !== cardId);
+    flippedIds.delete(cardId);
     dirty = true;
     persist();
   }
@@ -321,7 +359,7 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w / dpr, h / dpr);
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = PALETTE.bg;
     ctx.fillRect(0, 0, w / dpr, h / dpr);
 
     ctx.save();
@@ -339,7 +377,7 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
     });
 
     // 類題リンク（破線、自動）
-    ctx.strokeStyle = '#64748b88'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
+    ctx.strokeStyle = PALETTE.link; ctx.lineWidth = 1.5; ctx.setLineDash([6, 5]);
     linkPairs.forEach(l => {
       const a = map.nodes[l.aId], b = map.nodes[l.bId];
       if (!a || !b) return;
@@ -351,11 +389,11 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
     map.edges.forEach(edge => {
       const a = map.nodes[edge.aId], b = map.nodes[edge.bId];
       if (!a || !b) return;
-      ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2;
+      ctx.strokeStyle = PALETTE.accent; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       if (edge.kind === 'arrow') drawArrowHead(a, b);
       if (edge.label) {
-        ctx.fillStyle = '#e2e8f0'; ctx.font = '12px sans-serif';
+        ctx.fillStyle = PALETTE.text; ctx.font = '12px sans-serif';
         ctx.fillText(edge.label, (a.x + b.x) / 2, (a.y + b.y) / 2 - 4);
       }
     });
@@ -363,24 +401,28 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
     // 接続中のプレビュー線
     if (touchMode === 'connect' && connectFrom && connectPoint) {
       const a = map.nodes[connectFrom];
-      ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = PALETTE.accent; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(connectPoint.x, connectPoint.y); ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // カード（付箋）
-    const impColor = { 0: '#475569', 1: '#38bdf8', 2: '#eab308', 3: '#ef4444' };
+    // カード（付箋）。タップした分は裏面を表示する
     cards.forEach(c => {
       const p = map.nodes[c.id];
       if (!p) return;
+      const flipped = flippedIds.has(c.id);
       const x = p.x - NODE_W / 2, y = p.y - NODE_H / 2;
-      ctx.fillStyle = '#1e293b';
-      ctx.strokeStyle = impColor[c.importance] || '#475569';
+      ctx.fillStyle = flipped ? PALETTE.nodeBack : PALETTE.nodeFill;
+      ctx.strokeStyle = PALETTE.imp[c.importance] || PALETTE.imp[0];
       ctx.lineWidth = 2.5;
       roundRect(x, y, NODE_W, NODE_H, 10);
       ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#e2e8f0'; ctx.font = '13px sans-serif';
-      wrapText(c.front || '(空欄)', x + 10, y + 24, NODE_W - 20, 16, 2);
+      ctx.fillStyle = PALETTE.text; ctx.font = '13px sans-serif';
+      wrapText((flipped ? c.back : c.front) || '(空欄)', x + 10, y + 24, NODE_W - 20, 16, 2);
+      if (flipped) {
+        ctx.fillStyle = PALETTE.sub; ctx.font = '10px sans-serif';
+        ctx.fillText('裏', x + NODE_W - 18, y + 14);
+      }
     });
 
     ctx.restore();
@@ -399,7 +441,7 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
     ctx.lineTo(tx - len * Math.cos(angle - Math.PI / 6), ty - len * Math.sin(angle - Math.PI / 6));
     ctx.lineTo(tx - len * Math.cos(angle + Math.PI / 6), ty - len * Math.sin(angle + Math.PI / 6));
     ctx.closePath();
-    ctx.fillStyle = '#38bdf8';
+    ctx.fillStyle = PALETTE.accent;
     ctx.fill();
   }
   function roundRect(x, y, w, h, r) {
@@ -430,5 +472,5 @@ export function initMap({ canvas, getState, onOpenCard, saveMap, getMap }) {
   function start() { resize(); dirty = true; if (!raf) draw(); }
   function stop() { if (raf) cancelAnimationFrame(raf); raf = null; }
 
-  return { setScope, reflow, start, stop };
+  return { setScope, reflow, start, stop, removeCard };
 }
