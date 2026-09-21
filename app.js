@@ -440,11 +440,34 @@ $('#btnReviewClose').addEventListener('click', () => showScreen('homeScreen'));
 $('#btnStartReview').addEventListener('click', startReview);
 
 // ---------- マップ ----------
+const CUSTOM_MAP_ID = 'map:custom';
+
+async function addCardToCustomMap(cardId) {
+  let map = await db.get('maps', CUSTOM_MAP_ID);
+  if (!map) {
+    map = { id: CUSTOM_MAP_ID, name: 'カードマップ', scope: { type: 'custom', cardIds: [] },
+      nodes: {}, groups: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
+  }
+  if (!map.scope.cardIds) map.scope.cardIds = [];
+  if (map.scope.cardIds.includes(cardId)) {
+    alert('すでにカードマップに追加されています');
+    return;
+  }
+  map.scope.cardIds.push(cardId);
+  await db.put('maps', map);
+  if (confirm('カードマップに複製しました。今すぐマップを開きますか？')) {
+    showScreen('mapScreen');
+    openMap('custom');
+  }
+}
+$('#btnCardToMap').addEventListener('click', () => addCardToCustomMap(state.currentCardId));
+
 let mapController = null;
-function openMap() {
+function openMap(forceScope) {
   const sel = $('#mapScope');
-  sel.innerHTML = '<option value="all">すべて</option>' +
+  sel.innerHTML = '<option value="custom">カードマップ（追加したカード）</option><option value="all">すべて</option>' +
     state.folders.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('');
+  if (forceScope) sel.value = forceScope;
   showScreen('mapScreen');
   if (!mapController) {
     mapController = initMap({
