@@ -4,7 +4,7 @@
 
    ファイルを直したら、必ず下の版を1つ上げること。
    上げ忘れると、古いコードが端末に貼りついたまま入れ替わらない。 */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `memocard-${VERSION}`;
 
 const CORE = [
