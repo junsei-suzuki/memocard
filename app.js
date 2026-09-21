@@ -124,8 +124,12 @@ function renderFolderCards(filter = '') {
     const row = document.createElement('div');
     row.className = `card-row imp${c.importance}`;
     const dueTxt = c.srs.due <= Date.now() ? '復習予定' : new Date(c.srs.due).toLocaleDateString('ja-JP', {month:'numeric', day:'numeric'});
-    row.innerHTML = `<div class="front">${escapeHtml(truncate(c.front, 40))}</div><div class="due-badge">${dueTxt}</div>`;
-    row.addEventListener('click', () => openCard(c.id));
+    row.innerHTML = `<div class="front">${escapeHtml(truncate(c.front, 40))}</div>
+      <div class="due-badge">${dueTxt}</div>
+      <button class="row-del" title="削除">🗑</button>`;
+    row.querySelector('.front').addEventListener('click', () => openCard(c.id));
+    row.querySelector('.due-badge').addEventListener('click', () => openCard(c.id));
+    row.querySelector('.row-del').addEventListener('click', (e) => { e.stopPropagation(); deleteCardWithConfirm(c.id); });
     list.appendChild(row);
   });
 }
@@ -141,6 +145,7 @@ function openCard(id) {
 }
 $('#btnCardBack').addEventListener('click', () => showScreen('folderScreen'));
 $('#btnCardEdit').addEventListener('click', () => openEditor(state.currentCardId));
+$('#btnCardDelete').addEventListener('click', () => deleteCardWithConfirm(state.currentCardId));
 
 function renderCardFace() {
   const c = state.cards.find(x => x.id === state.currentCardId);
@@ -175,6 +180,23 @@ function renderCardLinks() {
 async function deleteCardCascade(cardId) {
   for (const l of linksOf(cardId)) await db.remove('links', l.id);
   await db.remove('cards', cardId);
+}
+
+/** ホーム（フォルダ一覧）・カード詳細・カードマップのどこからでも呼べる共通の削除処理 */
+async function deleteCardWithConfirm(cardId) {
+  const c = state.cards.find(x => x.id === cardId);
+  if (!c) return;
+  if (!confirm(`「${truncate(c.front, 20) || '（無題）'}」を削除しますか？この操作は取り消せません。`)) return;
+  await deleteCardCascade(cardId);
+  await reload();
+  if (mapController) mapController.removeCard(cardId);
+  renderHome();
+  if (state.currentFolderId) renderFolderCards();
+  if (state.currentCardId === cardId) {
+    state.currentCardId = null;
+    showScreen(state.currentFolderId ? 'folderScreen' : 'homeScreen');
+  }
+  updateBadge();
 }
 
 // ---------- カード編集 ----------
@@ -440,40 +462,19 @@ $('#btnReviewClose').addEventListener('click', () => showScreen('homeScreen'));
 $('#btnStartReview').addEventListener('click', startReview);
 
 // ---------- マップ ----------
-const CUSTOM_MAP_ID = 'map:custom';
-
-async function addCardToCustomMap(cardId) {
-  let map = await db.get('maps', CUSTOM_MAP_ID);
-  if (!map) {
-    map = { id: CUSTOM_MAP_ID, name: 'カードマップ', scope: { type: 'custom', cardIds: [] },
-      nodes: {}, groups: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
-  }
-  if (!map.scope.cardIds) map.scope.cardIds = [];
-  if (map.scope.cardIds.includes(cardId)) {
-    alert('すでにカードマップに追加されています');
-    return;
-  }
-  map.scope.cardIds.push(cardId);
-  await db.put('maps', map);
-  if (confirm('カードマップに複製しました。今すぐマップを開きますか？')) {
-    showScreen('mapScreen');
-    openMap('custom');
-  }
-}
-$('#btnCardToMap').addEventListener('click', () => addCardToCustomMap(state.currentCardId));
-
 let mapController = null;
-function openMap(forceScope) {
+function openMap() {
   const sel = $('#mapScope');
-  sel.innerHTML = '<option value="custom">カードマップ（追加したカード）</option><option value="all">すべて</option>' +
+  sel.innerHTML = '<option value="all">すべて</option>' +
     state.folders.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('');
-  if (forceScope) sel.value = forceScope;
+  sel.value = 'all'; // 開くたびに「すべて」から始める
   showScreen('mapScreen');
   if (!mapController) {
     mapController = initMap({
       canvas: $('#mapCanvas'),
       getState: () => state,
       onOpenCard: openCard,
+      onDeleteCard: deleteCardWithConfirm,
       saveMap: (m) => db.put('maps', m),
       getMap: (id) => db.get('maps', id),
     });
