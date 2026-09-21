@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1e293b">
+<meta name="theme-color" content="#f8fafc">
 <title>カードマップ</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
   :root{
-    --bg:#0f172a; --panel:#1e293b; --panel2:#273549; --text:#e2e8f0; --sub:#94a3b8;
-    --accent:#38bdf8; --line:#334155;
-    --imp0:#475569; --imp1:#38bdf8; --imp2:#eab308; --imp3:#ef4444;
+    --bg:#f8fafc; --panel:#ffffff; --panel2:#f1f5f9; --text:#0f172a; --sub:#64748b;
+    --accent:#0284c7; --line:#e2e8f0;
+    --imp0:#94a3b8; --imp1:#0284c7; --imp2:#ca8a04; --imp3:#dc2626;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0; height:100%; background:var(--bg); color:var(--text);
@@ -35,7 +35,7 @@
   .search-bar{display:flex; gap:8px; margin-bottom:14px;}
   .search-bar input{flex:1;}
 
-  .today-card{background:linear-gradient(135deg,#1d4e6b,#153b52); border:1px solid #1e5a78;
+  .today-card{background:linear-gradient(135deg,#e0f2fe,#f0f9ff); border:1px solid #bae6fd;
     border-radius:14px; padding:16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between;}
   .today-card .num{font-size:1.8em; font-weight:700; color:var(--accent);}
   .today-card button{background:var(--accent); color:#032; border:none; border-radius:10px; padding:.6em 1em; font-weight:600;}
@@ -101,10 +101,10 @@
 
   .grade-row{display:flex; gap:8px;}
   .grade-row button{flex:1; border-radius:10px; border:none; padding:.9em 0; font-weight:600;}
-  .g-again{background:#7f1d1d; color:#fecaca;}
-  .g-hard{background:#78350f; color:#fed7aa;}
-  .g-good{background:#14532d; color:#bbf7d0;}
-  .g-easy{background:#164e63; color:#a5f3fc;}
+  .g-again{background:#fee2e2; color:#991b1b;}
+  .g-hard{background:#ffedd5; color:#9a3412;}
+  .g-good{background:#dcfce7; color:#166534;}
+  .g-easy{background:#cffafe; color:#155e75;}
 
   .empty{color:var(--sub); text-align:center; padding:40px 20px;}
 
@@ -112,10 +112,12 @@
   #mapScreen.screen{padding:0;}
   #mapScreen .maptop{position:absolute; top:0; left:0; right:0; padding:10px 12px;
     padding-top:calc(10px + env(safe-area-inset-top)); display:flex; gap:8px; z-index:3;
-    background:linear-gradient(#0f172ad0, transparent);}
+    background:linear-gradient(#f8fafcd9, transparent);}
   #mapWrap{position:relative; height:100%;}
-  .maphint{position:absolute; bottom:80px; left:0; right:0; text-align:center; color:var(--sub);
-    font-size:.75em; pointer-events:none;}
+  .maphint{position:absolute; top:calc(56px + env(safe-area-inset-top)); right:10px;
+    max-width:46%; text-align:right; color:var(--sub); font-size:.65em; line-height:1.4;
+    background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:4px 8px;
+    opacity:.85; pointer-events:none; z-index:2;}
 
   .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:20;
     display:flex; align-items:flex-end;}
@@ -165,7 +167,7 @@
     <div class="topbar">
       <button class="iconbtn" id="btnCardBack">←</button>
       <h1>カード</h1>
-      <button class="iconbtn" id="btnCardToMap" title="カードマップに複製">🗺️</button>
+      <button class="iconbtn" id="btnCardDelete" title="削除">🗑</button>
       <button class="iconbtn" id="btnCardEdit">✎</button>
     </div>
     <div class="flashcard" id="cardFace"></div>
@@ -247,7 +249,7 @@
         <select id="mapScope" style="flex:1; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--text); padding:0 8px;"></select>
         <button class="iconbtn" id="btnMapReflow">⟲</button>
       </div>
-      <div class="maphint">1本指=移動／長押しで線を引く／空所を長押しで枠を作成</div>
+      <div class="maphint">タップ=裏表／2回タップ=詳細／ドラッグ=移動<br>長押し=線を引く（相手を選ばず離すと削除）<br>空所長押し=枠を作成</div>
     </div>
   </section>
 
